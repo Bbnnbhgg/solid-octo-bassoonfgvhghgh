@@ -1,58 +1,54 @@
 
-// worker.js
+export default {
+  async fetch(request, env, ctx) {
+    if (request.method !== 'POST') {
+      return new Response("Use POST", { status: 405 });
+    }
 
-// This function interacts with Gemini API to check for profanity or toxicity.
-async function queryGeminiAIForProfanity(text, apiKey) {
-  const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
 
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{ text: text }]
-      }]
-    })
-  });
+    const userMessage = body.text || "";
+    const apiKey = env.GEMINI_API_KEY;
 
-  if (!response.ok) {
-    throw new Error("Failed to contact Gemini API.");
-  }
+    const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
 
-  const data = await response.json();
-  // Assuming Gemini returns a toxicity score or flagged content
-  const toxicity = data?.results?.toxicity || 0;
-  return toxicity;
-}
+    // New prompt to Gemini
+    const prompt = `Analyze the following message. Respond ONLY with "BAD" if the message contains insults, toxicity, profanity, or inappropriate language. Otherwise, respond with "SAFE".\n\nMessage: ${userMessage}`;
 
-// Cloudflare Worker entry point
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      })
+    });
 
-async function handleRequest(request) {
-  const url = new URL(request.url);
+    if (!response.ok) {
+      return new Response("Gemini request failed", { status: 500 });
+    }
 
-  // Simulate a user input text (You can modify this to get text from the request body)
-  const userMessage = "This is a message with badword1 and other content.";
-  
-  // Retrieve the Gemini API key from Cloudflare Workers' environment
-  const apiKey = GEMINI_API_KEY;
+    const result = await response.json();
+    const geminiText = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "SAFE";
 
-  try {
-    const toxicityScore = await queryGeminiAIForProfanity(userMessage, apiKey);
-    const toxicityThreshold = 0.7; // Adjust based on what level you consider "toxic"
-    
-    if (toxicityScore > toxicityThreshold) {
-      return new Response("This message contains inappropriate content.", {
-        status: 400
+    if (geminiText.toUpperCase() === "BAD") {
+      return new Response(JSON.stringify({ profanityDetected: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
       });
     } else {
-      return new Response("This message is safe.", { status: 200 });
+      return new Response(JSON.stringify({ safe: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
     }
-  } catch (error) {
-    return new Response("Error detecting toxicity: " + error.message, { status: 500 });
   }
 }
