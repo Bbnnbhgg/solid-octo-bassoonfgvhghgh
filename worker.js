@@ -17,8 +17,11 @@ export default {
 
     const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey;
 
-    // New prompt to Gemini
-    const prompt = `Analyze the following message. Respond ONLY with "BAD" if the message contains insults, toxicity, profanity, or inappropriate language. Otherwise, respond with "SAFE".\n\nMessage: ${userMessage}`;
+    // Step 1: Preprocess the text to normalize and remove obfuscations
+    const cleanedText = normalizeText(userMessage);
+
+    // New prompt to Gemini AI with cleaned text
+    const prompt = `Analyze the following message. Respond ONLY with "BAD" if the message contains insults, toxicity, profanity, or inappropriate language. Otherwise, respond with "SAFE".\n\nMessage: ${cleanedText}`;
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -51,4 +54,19 @@ export default {
       });
     }
   }
+};
+
+// Helper function to normalize text
+function normalizeText(text) {
+  // Replace common leet speak numbers with letters
+  text = text.replace(/4/g, 'a').replace(/3/g, 'e').replace(/1/g, 'i').replace(/5/g, 's').replace(/0/g, 'o');
+  
+  // Replace symbols commonly used to mask bad words
+  text = text.replace(/[@#$%^&*!()_+=|~`]/g, ''); // Remove common symbols
+  text = text.replace(/\$\$/g, 'ss').replace(/@@/g, 'aa'); // Handle special cases
+  
+  // Remove extra spaces
+  text = text.replace(/\s+/g, ''); // Remove any extra spaces or characters
+  
+  return text;
 }
